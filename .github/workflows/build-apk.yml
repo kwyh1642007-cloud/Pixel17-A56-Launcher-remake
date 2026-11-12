@@ -9,7 +9,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -18,13 +18,855 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Generate Gradle Wrapper & Compile APK
+      - name: Accept Pre-installed Android SDK Licenses
         run: |
-          gradle wrapper --gradle-version 8.7
-          ./gradlew assembleRelease --no-daemon
+          yes | /usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Verify & Generate Project Files
+        run: |
+          rm -rf app settings.gradle.kts build.gradle.kts gradle.properties
+          mkdir -p app/src/main/java/com/pixel17/a56launcher
+          mkdir -p app/src/main/res/xml
+
+          cat << 'EOF' > settings.gradle.kts
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "Pixel17A56Launcher"
+          include(":app")
+          EOF
+
+          cat << 'EOF' > build.gradle.kts
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          EOF
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          EOF
+
+          cat << 'EOF' > app/build.gradle.kts
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.pixel17.a56launcher"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "com.pixel17.a56launcher"
+                  minSdk = 31
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "17.0-A56-Exynos1580"
+              }
+
+              buildTypes {
+                  release {
+                      isMinifyEnabled = false
+                      signingConfig = signingConfigs.getByName("debug")
+                  }
+              }
+
+              buildFeatures {
+                  compose = true
+              }
+
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.14"
+              }
+
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+          }
+
+          dependencies {
+              implementation(platform("androidx.compose:compose-bom:2024.06.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material-icons-extended")
+              implementation("androidx.activity:activity-compose:1.9.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.2")
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+              <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+              <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+              <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+              <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+              <application
+                  android:allowBackup="true"
+                  android:hardwareAccelerated="true"
+                  android:largeHeap="true"
+                  android:label="Pixel 17 Launcher (A56)"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:launchMode="singleTask"
+                      android:stateNotNeeded="true"
+                      android:clearTaskOnLaunch="true"
+                      android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|screenLayout|uiMode">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <service
+                      android:name=".PixelSystemUIService"
+                      android:exported="true"
+                      android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+                      <intent-filter>
+                          <action android:name="android.accessibilityservice.AccessibilityService" />
+                      </intent-filter>
+                      <meta-data
+                          android:name="android.accessibilityservice"
+                          android:resource="@xml/accessibility_service_config" />
+                  </service>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/res/xml/accessibility_service_config.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+              android:accessibilityEventTypes="typeAllMask"
+              android:accessibilityFeedbackType="feedbackGeneric"
+              android:accessibilityFlags="flagRequestFilterKeyEvents|flagRetrieveInteractiveWindows"
+              android:canPerformGestures="true"
+              android:canRequestFilterKeyEvents="true"
+              android:canRetrieveWindowContent="false"
+              android:notificationTimeout="50" />
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/pixel17/a56launcher/MainActivity.kt
+          package com.pixel17.a56launcher
+
+          import android.accessibilityservice.AccessibilityService
+          import android.content.Context
+          import android.content.Intent
+          import android.graphics.Bitmap
+          import android.graphics.Canvas
+          import android.graphics.PixelFormat
+          import android.graphics.drawable.Drawable
+          import android.hardware.camera2.CameraManager
+          import android.media.AudioManager
+          import android.os.Build
+          import android.os.Bundle
+          import android.provider.Settings
+          import android.util.LruCache
+          import android.view.Gravity
+          import android.view.KeyEvent
+          import android.view.WindowManager
+          import android.view.accessibility.AccessibilityEvent
+          import android.widget.LinearLayout
+          import android.widget.SeekBar
+          import android.widget.TextView
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.compose.animation.AnimatedVisibility
+          import androidx.compose.animation.core.Spring
+          import androidx.compose.animation.core.spring
+          import androidx.compose.animation.slideInVertically
+          import androidx.compose.animation.slideOutVertically
+          import androidx.compose.foundation.Image
+          import androidx.compose.foundation.background
+          import androidx.compose.foundation.clickable
+          import androidx.compose.foundation.gestures.detectVerticalDragGestures
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.foundation.lazy.grid.GridCells
+          import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+          import androidx.compose.foundation.lazy.grid.items
+          import androidx.compose.foundation.shape.CircleShape
+          import androidx.compose.foundation.shape.RoundedCornerShape
+          import androidx.compose.material.icons.Icons
+          import androidx.compose.material.icons.filled.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.draw.clip
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.graphics.asImageBitmap
+          import androidx.compose.ui.graphics.vector.ImageVector
+          import androidx.compose.ui.input.pointer.pointerInput
+          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.text.font.FontWeight
+          import androidx.compose.ui.text.style.TextOverflow
+          import androidx.compose.ui.unit.dp
+          import androidx.compose.ui.unit.sp
+          import kotlinx.coroutines.Dispatchers
+          import kotlinx.coroutines.delay
+          import kotlinx.coroutines.withContext
+          import java.text.SimpleDateFormat
+          import java.util.*
+
+          data class AppEntry(
+              val label: String,
+              val packageName: String,
+              val icon: Bitmap
+          )
+
+          object IconCache {
+              private val cache = LruCache<String, Bitmap>(250)
+              fun get(pkg: String): Bitmap? = cache.get(pkg)
+              fun put(pkg: String, bmp: Bitmap) { cache.put(pkg, bmp) }
+          }
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                      val params = window.attributes
+                      params.preferredRefreshRate = 120f
+                      window.attributes = params
+                  }
+                  setContent {
+                      val colorScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                          dynamicDarkColorScheme(LocalContext.current)
+                      } else {
+                          darkColorScheme()
+                      }
+                      MaterialTheme(colorScheme = colorScheme) {
+                          Pixel17LauncherRoot()
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun Pixel17LauncherRoot() {
+              val context = LocalContext.current
+              val audioManager = remember { context.getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+              var apps by remember { mutableStateOf<List<AppEntry>>(emptyList()) }
+              var searchQuery by remember { mutableStateOf("") }
+              var isDrawerOpen by remember { mutableStateOf(false) }
+              var isControlCenterOpen by remember { mutableStateOf(false) }
+              var isVolumeBarVisible by remember { mutableStateOf(false) }
+              var currentVolume by remember {
+                  mutableFloatStateOf(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat())
+              }
+              val maxVolume = remember { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC).toFloat().coerceAtLeast(1f) }
+
+              LaunchedEffect(Unit) {
+                  apps = withContext(Dispatchers.IO) {
+                      val pm = context.packageManager
+                      val intent = Intent(Intent.ACTION_MAIN, null).apply {
+                          addCategory(Intent.CATEGORY_LAUNCHER)
+                      }
+                      pm.queryIntentActivities(intent, 0)
+                          .mapNotNull { resolveInfo ->
+                              val pkg = resolveInfo.activityInfo.packageName
+                              if (pkg == context.packageName) return@mapNotNull null
+                              val label = resolveInfo.loadLabel(pm).toString()
+                              val bmp = IconCache.get(pkg) ?: drawableToBitmap(resolveInfo.loadIcon(pm)).also {
+                                  IconCache.put(pkg, it)
+                              }
+                              AppEntry(label, pkg, bmp)
+                          }
+                          .sortedBy { it.label.lowercase() }
+                  }
+              }
+
+              LaunchedEffect(isVolumeBarVisible, currentVolume) {
+                  if (isVolumeBarVisible) {
+                      delay(3000)
+                      isVolumeBarVisible = false
+                  }
+              }
+
+              Box(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .background(Color(0xFF0E1116))
+                      .pointerInput(Unit) {
+                          detectVerticalDragGestures { _, dragAmount ->
+                              if (dragAmount < -35) isDrawerOpen = true
+                              if (dragAmount > 35 && !isDrawerOpen) isControlCenterOpen = true
+                          }
+                      }
+              ) {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .statusBarsPadding()
+                          .navigationBarsPadding()
+                          .padding(horizontal = 20.dp, vertical = 16.dp),
+                      verticalArrangement = Arrangement.SpaceBetween
+                  ) {
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Column(modifier = Modifier.padding(top = 12.dp)) {
+                              val dateStr = remember {
+                                  SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date())
+                              }
+                              Text(
+                                  text = dateStr,
+                                  color = Color.White,
+                                  fontSize = 24.sp,
+                                  fontWeight = FontWeight.SemiBold
+                              )
+                              Text(
+                                  text = "Android 17 • Pixel OS • 120Hz Xclipse 540",
+                                  color = MaterialTheme.colorScheme.primary,
+                                  fontSize = 13.sp
+                              )
+                          }
+
+                          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                              FilledTonalIconButton(onClick = { isVolumeBarVisible = !isVolumeBarVisible }) {
+                                  Icon(Icons.Default.VolumeUp, contentDescription = "Pixel Volume")
+                              }
+                              FilledTonalIconButton(onClick = { isControlCenterOpen = true }) {
+                                  Icon(Icons.Default.Tune, contentDescription = "Pixel Control Center")
+                              }
+                          }
+                      }
+
+                      LazyVerticalGrid(
+                          columns = GridCells.Fixed(5),
+                          modifier = Modifier
+                              .weight(1f)
+                              .fillMaxWidth()
+                              .padding(vertical = 24.dp),
+                          verticalArrangement = Arrangement.spacedBy(18.dp),
+                          horizontalArrangement = Arrangement.spacedBy(12.dp)
+                      ) {
+                          items(apps.take(10), key = { it.packageName }) { app ->
+                              AppIconItem(app = app) {
+                                  context.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                                      context.startActivity(it)
+                                  }
+                              }
+                          }
+                      }
+
+                      Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.SpaceEvenly
+                          ) {
+                              apps.take(5).forEach { app ->
+                                  AppIconItem(app = app, showLabel = false) {
+                                      context.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                                          context.startActivity(it)
+                                      }
+                                  }
+                              }
+                          }
+
+                          Surface(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .height(54.dp)
+                                  .clickable { isDrawerOpen = true },
+                              shape = CircleShape,
+                              color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.85f)
+                          ) {
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxSize()
+                                      .padding(horizontal = 20.dp),
+                                  verticalAlignment = Alignment.CenterVertically,
+                                  horizontalArrangement = Arrangement.SpaceBetween
+                              ) {
+                                  Row(verticalAlignment = Alignment.CenterVertically) {
+                                      Icon(
+                                          Icons.Default.Search,
+                                          contentDescription = "Search",
+                                          tint = MaterialTheme.colorScheme.primary
+                                      )
+                                      Spacer(modifier = Modifier.width(12.dp))
+                                      Text(
+                                          "Search apps & web...",
+                                          color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                          fontSize = 16.sp
+                                      )
+                                  }
+                                  Icon(
+                                      Icons.Default.Mic,
+                                      contentDescription = "Voice",
+                                      tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                  )
+                              }
+                          }
+                      }
+                  }
+
+                  AnimatedVisibility(
+                      visible = isDrawerOpen,
+                      enter = slideInVertically(
+                          initialOffsetY = { it },
+                          animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                      ),
+                      exit = slideOutVertically(targetOffsetY = { it })
+                  ) {
+                      Surface(
+                          modifier = Modifier.fillMaxSize(),
+                          color = MaterialTheme.colorScheme.surface.copy(alpha = 0.97f)
+                      ) {
+                          Column(
+                              modifier = Modifier
+                                  .fillMaxSize()
+                                  .statusBarsPadding()
+                                  .padding(16.dp)
+                          ) {
+                              OutlinedTextField(
+                                  value = searchQuery,
+                                  onValueChange = { searchQuery = it },
+                                  placeholder = { Text("Search apps") },
+                                  leadingIcon = { Icon(Icons.Default.Search, null) },
+                                  trailingIcon = {
+                                      IconButton(onClick = {
+                                          searchQuery = ""
+                                          isDrawerOpen = false
+                                      }) {
+                                          Icon(Icons.Default.KeyboardArrowDown, "Close")
+                                      }
+                                  },
+                                  shape = CircleShape,
+                                  modifier = Modifier.fillMaxWidth(),
+                                  singleLine = true
+                              )
+
+                              Spacer(modifier = Modifier.height(16.dp))
+
+                              val filteredApps = remember(apps, searchQuery) {
+                                  if (searchQuery.isBlank()) apps
+                                  else apps.filter { it.label.contains(searchQuery, ignoreCase = true) }
+                              }
+
+                              LazyVerticalGrid(
+                                  columns = GridCells.Fixed(5),
+                                  verticalArrangement = Arrangement.spacedBy(20.dp),
+                                  horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                  modifier = Modifier.fillMaxSize()
+                              ) {
+                                  items(filteredApps, key = { it.packageName }) { app ->
+                                      AppIconItem(app = app) {
+                                          isDrawerOpen = false
+                                          context.packageManager.getLaunchIntentForPackage(app.packageName)?.let {
+                                              context.startActivity(it)
+                                          }
+                                      }
+                                  }
+                              }
+                          }
+                      }
+                  }
+
+                  AnimatedVisibility(
+                      visible = isControlCenterOpen,
+                      enter = slideInVertically(initialOffsetY = { -it }),
+                      exit = slideOutVertically(targetOffsetY = { -it })
+                  ) {
+                      Pixel17ControlCenter(onClose = { isControlCenterOpen = false })
+                  }
+
+                  Box(
+                      modifier = Modifier
+                          .align(Alignment.CenterEnd)
+                          .padding(end = 16.dp)
+                  ) {
+                      AnimatedVisibility(visible = isVolumeBarVisible) {
+                          Pixel17VolumePill(
+                              volume = currentVolume,
+                              maxVolume = maxVolume,
+                              onVolumeChange = { newVol ->
+                                  currentVolume = newVol
+                                  audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, newVol.toInt(), 0)
+                              }
+                          )
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun Pixel17ControlCenter(onClose: () -> Unit) {
+              val context = LocalContext.current
+              var wifiOn by remember { mutableStateOf(true) }
+              var btOn by remember { mutableStateOf(true) }
+              var torchOn by remember { mutableStateOf(false) }
+              var dndOn by remember { mutableStateOf(false) }
+              var brightness by remember { mutableFloatStateOf(0.75f) }
+
+              Surface(
+                  modifier = Modifier.fillMaxSize(),
+                  color = Color(0xFF10131A).copy(alpha = 0.96f)
+              ) {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .statusBarsPadding()
+                          .padding(20.dp),
+                      verticalArrangement = Arrangement.spacedBy(18.dp)
+                  ) {
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween,
+                          verticalAlignment = Alignment.CenterVertically
+                      ) {
+                          Text(
+                              text = "Pixel OS 17 • Quick Settings",
+                              color = Color.White,
+                              fontSize = 18.sp,
+                              fontWeight = FontWeight.Bold
+                          )
+                          IconButton(onClick = onClose) {
+                              Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.White)
+                          }
+                      }
+
+                      Surface(
+                          shape = RoundedCornerShape(28.dp),
+                          color = MaterialTheme.colorScheme.surfaceVariant,
+                          modifier = Modifier
+                              .fillMaxWidth()
+                              .height(60.dp)
+                      ) {
+                          Row(
+                              modifier = Modifier
+                                  .fillMaxSize()
+                                  .padding(horizontal = 18.dp),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Icon(Icons.Default.BrightnessHigh, null, tint = MaterialTheme.colorScheme.primary)
+                              Spacer(modifier = Modifier.width(12.dp))
+                              Slider(
+                                  value = brightness,
+                                  onValueChange = {
+                                      brightness = it
+                                      if (Settings.System.canWrite(context)) {
+                                          Settings.System.putInt(
+                                              context.contentResolver,
+                                              Settings.System.SCREEN_BRIGHTNESS,
+                                              (it * 255).toInt()
+                                          )
+                                      }
+                                  },
+                                  modifier = Modifier.weight(1f)
+                              )
+                          }
+                      }
+
+                      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                          PixelQuickTile(
+                              title = "Internet",
+                              subtitle = if (wifiOn) "5G & Wi-Fi" else "Off",
+                              active = wifiOn,
+                              icon = Icons.Default.Wifi,
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              wifiOn = !wifiOn
+                              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                  context.startActivity(Intent(Settings.Panel.ACTION_INTERNET_CONNECTIVITY))
+                              }
+                          }
+                          PixelQuickTile(
+                              title = "Bluetooth",
+                              subtitle = if (btOn) "Connected" else "Off",
+                              active = btOn,
+                              icon = Icons.Default.Bluetooth,
+                              modifier = Modifier.weight(1f)
+                          ) { btOn = !btOn }
+                      }
+
+                      Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                          PixelQuickTile(
+                              title = "Flashlight",
+                              subtitle = if (torchOn) "On" else "Off",
+                              active = torchOn,
+                              icon = Icons.Default.FlashlightOn,
+                              modifier = Modifier.weight(1f)
+                          ) {
+                              torchOn = !torchOn
+                              runCatching {
+                                  val cam = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+                                  cam.setTorchMode(cam.cameraIdList[0], torchOn)
+                              }
+                          }
+                          PixelQuickTile(
+                              title = "Do Not Disturb",
+                              subtitle = if (dndOn) "Active" else "Off",
+                              active = dndOn,
+                              icon = Icons.Default.DoNotDisturbOn,
+                              modifier = Modifier.weight(1f)
+                          ) { dndOn = !dndOn }
+                      }
+
+                      Spacer(modifier = Modifier.weight(1f))
+
+                      Row(
+                          modifier = Modifier.fillMaxWidth(),
+                          horizontalArrangement = Arrangement.SpaceBetween
+                      ) {
+                          FilledTonalButton(onClick = {
+                              context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                          }) {
+                              Text("Enable Global Volume Key Hook")
+                          }
+                          FilledTonalIconButton(onClick = {
+                              context.startActivity(Intent(Settings.ACTION_SETTINGS))
+                          }) {
+                              Icon(Icons.Default.Settings, contentDescription = "Settings")
+                          }
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun PixelQuickTile(
+              title: String,
+              subtitle: String,
+              active: Boolean,
+              icon: ImageVector,
+              modifier: Modifier = Modifier,
+              onClick: () -> Unit
+          ) {
+              val bg = if (active) MaterialTheme.colorScheme.primaryContainer else Color(0xFF1E222B)
+              val contentColor = if (active) MaterialTheme.colorScheme.onPrimaryContainer else Color.White
+
+              Surface(
+                  modifier = modifier
+                      .height(74.dp)
+                      .clip(RoundedCornerShape(36.dp))
+                      .clickable { onClick() },
+                  color = bg,
+                  shape = RoundedCornerShape(36.dp)
+              ) {
+                  Row(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .padding(horizontal = 18.dp),
+                      verticalAlignment = Alignment.CenterVertically
+                  ) {
+                      Icon(icon, contentDescription = title, tint = contentColor)
+                      Spacer(modifier = Modifier.width(12.dp))
+                      Column {
+                          Text(title, color = contentColor, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                          Text(subtitle, color = contentColor.copy(alpha = 0.75f), fontSize = 12.sp)
+                      }
+                  }
+              }
+          }
+
+          @Composable
+          fun Pixel17VolumePill(
+              volume: Float,
+              maxVolume: Float,
+              onVolumeChange: (Float) -> Unit
+          ) {
+              var ringerMode by remember { mutableIntStateOf(0) }
+
+              Surface(
+                  shape = RoundedCornerShape(32.dp),
+                  color = MaterialTheme.colorScheme.surfaceVariant,
+                  tonalElevation = 12.dp,
+                  modifier = Modifier
+                      .width(64.dp)
+                      .height(260.dp)
+              ) {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .padding(vertical = 16.dp),
+                      horizontalAlignment = Alignment.CenterHorizontally,
+                      verticalArrangement = Arrangement.SpaceBetween
+                  ) {
+                      IconButton(onClick = { ringerMode = (ringerMode + 1) % 3 }) {
+                          val modeIcon = when (ringerMode) {
+                              1 -> Icons.Default.Vibration
+                              2 -> Icons.Default.VolumeOff
+                              else -> Icons.Default.NotificationsActive
+                          }
+                          Icon(modeIcon, contentDescription = "Sound Mode", tint = MaterialTheme.colorScheme.primary)
+                      }
+
+                      Slider(
+                          value = volume,
+                          onValueChange = onVolumeChange,
+                          valueRange = 0f..maxVolume,
+                          modifier = Modifier
+                              .weight(1f)
+                              .padding(vertical = 8.dp)
+                      )
+
+                      Text(
+                          text = "${((volume / maxVolume) * 100).toInt()}%",
+                          fontSize = 12.sp,
+                          fontWeight = FontWeight.Bold,
+                          color = MaterialTheme.colorScheme.onSurfaceVariant
+                      )
+                  }
+              }
+          }
+
+          @Composable
+          fun AppIconItem(app: AppEntry, showLabel: Boolean = true, onClick: () -> Unit) {
+              Column(
+                  horizontalAlignment = Alignment.CenterHorizontally,
+                  modifier = Modifier
+                      .clickable { onClick() }
+                      .padding(4.dp)
+              ) {
+                  Image(
+                      bitmap = app.icon.asImageBitmap(),
+                      contentDescription = app.label,
+                      modifier = Modifier
+                          .size(54.dp)
+                          .clip(CircleShape)
+                  )
+                  if (showLabel) {
+                      Spacer(modifier = Modifier.height(6.dp))
+                      Text(
+                          text = app.label,
+                          color = Color.White,
+                          fontSize = 12.sp,
+                          maxLines = 1,
+                          overflow = TextOverflow.Ellipsis
+                      )
+                  }
+              }
+          }
+
+          fun drawableToBitmap(drawable: Drawable): Bitmap {
+              val bmp = Bitmap.createBitmap(128, 128, Bitmap.Config.ARGB_8888)
+              val canvas = Canvas(bmp)
+              drawable.setBounds(0, 0, canvas.width, canvas.height)
+              drawable.draw(canvas)
+              return bmp
+          }
+
+          class PixelSystemUIService : AccessibilityService() {
+              private var windowManager: WindowManager? = null
+              private var overlayView: LinearLayout? = null
+
+              override fun onServiceConnected() {
+                  super.onServiceConnected()
+                  windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+              }
+
+              override fun onKeyEvent(event: KeyEvent): Boolean {
+                  if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP || event.keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
+                      if (event.action == KeyEvent.ACTION_DOWN) {
+                          val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+                          val direction = if (event.keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
+                              AudioManager.ADJUST_RAISE
+                          } else {
+                              AudioManager.ADJUST_LOWER
+                          }
+                          audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, direction, 0)
+                          showPixelVolumeOverlay(audio)
+                      }
+                      return true
+                  }
+                  return super.onKeyEvent(event)
+              }
+
+              private fun showPixelVolumeOverlay(audio: AudioManager) {
+                  if (overlayView != null) {
+                      runCatching { windowManager?.removeViewImmediate(overlayView) }
+                      overlayView = null
+                  }
+
+                  val layout = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setBackgroundColor(0xEE1E222B.toInt())
+                      setPadding(32, 32, 32, 32)
+                  }
+
+                  val current = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                  val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+
+                  val label = TextView(this).apply {
+                      text = "Pixel Vol: ${(current * 100) / max}%"
+                      setTextColor(0xFFA8C7FA.toInt())
+                      textSize = 14f
+                  }
+
+                  val seekBar = SeekBar(this).apply {
+                      this.max = max
+                      this.progress = current
+                  }
+
+                  layout.addView(label)
+                  layout.addView(seekBar)
+
+                  val params = WindowManager.LayoutParams(
+                      420,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  ).apply {
+                      gravity = Gravity.END or Gravity.CENTER_VERTICAL
+                      x = 24
+                  }
+
+                  overlayView = layout
+                  runCatching { windowManager?.addView(overlayView, params) }
+                  layout.postDelayed({
+                      overlayView?.let {
+                          runCatching { windowManager?.removeView(it) }
+                          overlayView = null
+                      }
+                  }, 2500)
+              }
+
+              override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+              override fun onInterrupt() {}
+          }
+          EOF
+
+      - name: Compile Signed APK
+        run: gradle assembleRelease --no-daemon --stacktrace
 
       - name: Export Ready-to-Install APK
         uses: actions/upload-artifact@v4
